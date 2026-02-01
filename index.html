@@ -26,12 +26,11 @@
         <h2>Inserimento giornata</h2>
         <div class="row">
           <button id="todayBtn" class="ghost" title="Vai a oggi">Oggi</button>
-          <button id="dupYesterdayBtn" class="ghost" title="Copia i dati da ieri">Duplica ieri</button>
-          <button id="dupLastWorkBtn" class="ghost" title="Copia ultimo giorno lavorato">Duplica ultimo lavoro</button>
+          <button id="ordinaryBtn" class="ghost" title="Imposta 8h ordinarie">Ordinario</button>
         </div>
       </div>
 
-      <div class="grid">
+      <div class="grid onecol">
         <label class="field">
           <span>Data</span>
           <input id="date" type="date" />
@@ -49,31 +48,39 @@
           <small class="hint">Se la data è festività IT/extras, viene suggerito automaticamente.</small>
         </label>
 
-        <label class="field">
-          <span>Ore lavoro</span>
-          <input id="workHours" type="text" placeholder="es. 8:30 oppure 8.5" inputmode="decimal" />
-          <small class="hint">Inserisci 0 se non hai lavorato.</small>
-        </label>
+        <div class="grid twoColPhone">
+          <label class="field">
+            <span>Ore lavoro</span>
+            <input id="workHours" type="text" placeholder="es. 8:00 oppure 8.5" inputmode="decimal" />
+            <small class="hint">Inserisci 0 se non hai lavorato.</small>
+          </label>
+
+          <label class="field">
+            <span>Ore permesso</span>
+            <input id="permitHours" type="text" placeholder="es. 2:00 oppure 2" inputmode="decimal" />
+            <small class="hint">Permessi conteggiati in ore.</small>
+          </label>
+        </div>
 
         <label class="field">
-          <span>Ore permesso</span>
-          <input id="permitHours" type="text" placeholder="es. 2:00 oppure 2" inputmode="decimal" />
-          <small class="hint">Permessi conteggiati in ore.</small>
-        </label>
-
-        <label class="field" style="grid-column: 1 / -1;">
           <span>Nota giornaliera</span>
           <input id="note" type="text" placeholder="es. cantiere, trasferta, visita medica..." />
         </label>
+
+        <div class="row quickRow">
+          <button id="dupYesterdayBtn" class="ghost" title="Copia i dati da ieri">Duplica ieri</button>
+          <button id="dupLastWorkBtn" class="ghost" title="Copia ultimo giorno lavorato">Duplica ultimo lavoro</button>
+          <button id="clearBtn" class="ghost">Pulisci</button>
+        </div>
+
+        <div class="tip">
+          Suggerimento: su iPhone aggiungi alla Home (Condividi → “Aggiungi a Home”) per usarla come app.
+        </div>
       </div>
 
-      <div class="row">
-        <button id="saveBtn" class="primary">Salva giornata</button>
-        <button id="clearBtn" class="ghost">Pulisci campi</button>
-      </div>
-
-      <div class="tip">
-        Suggerimento: su iPhone aggiungi alla Home (Condividi → “Aggiungi a Home”) per usarla come app.
+      <!-- barra comandi sticky per telefono -->
+      <div class="stickyBar">
+        <button id="saveBtn" class="primary big">Salva giornata</button>
       </div>
     </section>
 
