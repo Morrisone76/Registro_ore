@@ -3,7 +3,6 @@
   --card:#111825;
   --text:#e7eefc;
   --muted:#a7b4cf;
-  --line:#22324a;
   --accent:#4da3ff;
   --danger:#ff5a6a;
 }
@@ -37,20 +36,10 @@ h3{margin:14px 0 10px;font-size:1.05rem;color:var(--muted)}
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap:12px;
 }
-@media (max-width: 720px){
-  .grid{grid-template-columns:1fr}
-}
-
-.grid.onecol{
-  grid-template-columns: 1fr;
-}
-
-.grid.twoColPhone{
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-@media (max-width: 420px){
-  .grid.twoColPhone{grid-template-columns:1fr;}
-}
+@media (max-width: 720px){ .grid{grid-template-columns:1fr} }
+.grid.onecol{ grid-template-columns: 1fr; }
+.grid.twoColPhone{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 420px){ .grid.twoColPhone{grid-template-columns:1fr;} }
 
 .field{display:flex;flex-direction:column;gap:6px}
 .field span{color:var(--muted);font-size:.9rem}
@@ -84,16 +73,25 @@ button.primary{background:rgba(77,163,255,.15);border-color:rgba(77,163,255,.6)}
 button.ghost{background:transparent}
 button.danger{background:rgba(255,90,106,.15);border-color:rgba(255,90,106,.6)}
 button:active{transform: translateY(1px)}
-
 button.big{
   width: 100%;
   padding: 14px 14px;
   border-radius: 14px;
   font-size: 1.05rem;
 }
-
 .quickRow{justify-content:space-between}
 .quickRow button{flex:1}
+
+/* Checkbox pranzo */
+.lunchRow{justify-content:space-between;margin-top:2px}
+.check{
+  display:flex;align-items:center;gap:10px;
+  padding:10px 12px;
+  border:1px solid rgba(34,50,74,.8);
+  border-radius:12px;
+  background: rgba(12,20,34,.35);
+}
+.check input{transform: scale(1.15);}
 
 /* TABS */
 .tabs{
@@ -122,11 +120,7 @@ button.big{
 .tabPanel{display:none}
 .tabPanel.active{display:block}
 
-.monthBar{
-  display:flex;
-  align-items:center;
-  gap:8px;
-}
+.monthBar{display:flex;align-items:center;gap:8px}
 .monthBar button{padding:10px 12px}
 
 .tip{
@@ -138,7 +132,7 @@ button.big{
   background: rgba(12,20,34,.35);
 }
 
-/* Sticky bar (perfetta su iPhone) */
+/* Sticky bar */
 .stickyBar{
   position: sticky;
   bottom: 10px;
@@ -152,7 +146,7 @@ button.big{
 /* STATS + TABLE */
 .stats{
   display:grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap:10px;
   margin-bottom:10px;
 }
@@ -175,7 +169,7 @@ button.big{
 table{
   width:100%;
   border-collapse:collapse;
-  min-width:820px;
+  min-width:920px;
   background:rgba(12,20,34,.35)
 }
 th, td{padding:10px;border-bottom:1px solid rgba(34,50,74,.55);vertical-align:top}

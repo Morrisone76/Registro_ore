@@ -10,10 +10,9 @@
   <div class="wrap">
     <header class="header">
       <h1>Registro Ore</h1>
-      <div class="sub">Offline • lavoro+permessi • ferie/malattia • festività IT • export/backup mensile</div>
+      <div class="sub">Offline • lavoro+permessi • pranzo (unità) • ferie/malattia • festività IT • export/backup mensile</div>
     </header>
 
-    <!-- MENU -->
     <nav class="tabs" role="tablist" aria-label="Sezioni">
       <button class="tab active" data-tab="ins" role="tab" aria-selected="true">Inserimento</button>
       <button class="tab" data-tab="set" role="tab" aria-selected="false">Impostazioni</button>
@@ -52,7 +51,7 @@
           <label class="field">
             <span>Ore lavoro</span>
             <input id="workHours" type="text" placeholder="es. 8:00 oppure 8.5" inputmode="decimal" />
-            <small class="hint">Inserisci 0 se non hai lavorato.</small>
+            <small class="hint">Se ≥ 5:00 → pranzo ✓ (automatico).</small>
           </label>
 
           <label class="field">
@@ -60,6 +59,14 @@
             <input id="permitHours" type="text" placeholder="es. 2:00 oppure 2" inputmode="decimal" />
             <small class="hint">Permessi conteggiati in ore.</small>
           </label>
+        </div>
+
+        <div class="row lunchRow">
+          <label class="check">
+            <input id="lunchEnabled" type="checkbox" />
+            <span>Pranzo</span>
+          </label>
+          <small id="lunchHint" class="hint">Disponibile solo se lavori almeno 5 ore.</small>
         </div>
 
         <label class="field">
@@ -74,11 +81,10 @@
         </div>
 
         <div class="tip">
-          Suggerimento: su iPhone aggiungi alla Home (Condividi → “Aggiungi a Home”) per usarla come app.
+          Su iPhone: Safari → Condividi → “Aggiungi a Home” per usarla come app.
         </div>
       </div>
 
-      <!-- barra comandi sticky per telefono -->
       <div class="stickyBar">
         <button id="saveBtn" class="primary big">Salva giornata</button>
       </div>
@@ -154,6 +160,7 @@
               <th>Stato</th>
               <th>Lavoro</th>
               <th>Permesso</th>
+              <th>Pranzo</th>
               <th>Ordinarie</th>
               <th>Straord.</th>
               <th>Note</th>
