@@ -41,6 +41,17 @@ h3{margin:14px 0 10px;font-size:1.05rem;color:var(--muted)}
   .grid{grid-template-columns:1fr}
 }
 
+.grid.onecol{
+  grid-template-columns: 1fr;
+}
+
+.grid.twoColPhone{
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+@media (max-width: 420px){
+  .grid.twoColPhone{grid-template-columns:1fr;}
+}
+
 .field{display:flex;flex-direction:column;gap:6px}
 .field span{color:var(--muted);font-size:.9rem}
 .field input, .field select{
@@ -48,7 +59,7 @@ h3{margin:14px 0 10px;font-size:1.05rem;color:var(--muted)}
   border:1px solid rgba(34,50,74,.95);
   color:var(--text);
   border-radius:10px;
-  padding:10px 10px;
+  padding:12px 10px;
   font-size:1rem;
   outline:none;
 }
@@ -65,14 +76,24 @@ button{
   background:#0c1422;
   color:var(--text);
   padding:10px 12px;
-  border-radius:10px;
+  border-radius:12px;
   cursor:pointer;
-  font-weight:800;
+  font-weight:900;
 }
 button.primary{background:rgba(77,163,255,.15);border-color:rgba(77,163,255,.6)}
 button.ghost{background:transparent}
 button.danger{background:rgba(255,90,106,.15);border-color:rgba(255,90,106,.6)}
 button:active{transform: translateY(1px)}
+
+button.big{
+  width: 100%;
+  padding: 14px 14px;
+  border-radius: 14px;
+  font-size: 1.05rem;
+}
+
+.quickRow{justify-content:space-between}
+.quickRow button{flex:1}
 
 /* TABS */
 .tabs{
@@ -117,14 +138,26 @@ button:active{transform: translateY(1px)}
   background: rgba(12,20,34,.35);
 }
 
+/* Sticky bar (perfetta su iPhone) */
+.stickyBar{
+  position: sticky;
+  bottom: 10px;
+  margin-top: 12px;
+  padding-top: 10px;
+  background: linear-gradient(180deg, rgba(17,24,37,0), rgba(17,24,37,.85));
+  backdrop-filter: blur(6px);
+  border-radius: 14px;
+}
+
 /* STATS + TABLE */
 .stats{
   display:grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap:10px;
   margin-bottom:10px;
 }
 @media (max-width: 900px){ .stats{grid-template-columns: repeat(2, 1fr);} }
+
 .stat{
   border:1px solid rgba(34,50,74,.8);
   border-radius:12px;
@@ -132,7 +165,7 @@ button:active{transform: translateY(1px)}
   background:rgba(12,20,34,.65);
 }
 .stat .k{color:var(--muted);font-size:.9rem}
-.stat .v{font-size:1.25rem;margin-top:4px}
+.stat .v{font-size:1.25rem;margin-top:4px;font-weight:900}
 
 .tableWrap{
   overflow:auto;
@@ -142,7 +175,7 @@ button:active{transform: translateY(1px)}
 table{
   width:100%;
   border-collapse:collapse;
-  min-width:760px;
+  min-width:820px;
   background:rgba(12,20,34,.35)
 }
 th, td{padding:10px;border-bottom:1px solid rgba(34,50,74,.55);vertical-align:top}

@@ -1,27 +1,22 @@
-/* Registro Ore - Stable (v7)
- * Upgrade:
- * - Ricorda ultima scheda (tabs) su iPhone
- * - Pulsante Oggi
- * - Duplica ieri (copia lavoro/permesso/stato/nota)
- * - Duplica ultimo giorno lavorato (workMin > 0)
- * - Selezione mesi passati + prev/next mese
- * Storage stabile + migrazione + backup/restore/wipe
+/* Registro Ore - Stable (v7.4)
+ * Richieste implementate:
+ * - Riga intera ROSSA per sab/dom e per festività (tabella + PDF)
+ * - Inserimento più phone-friendly + barra Salva sticky
+ * - Pulsante "Ordinario": stato Normale + 8:00 lavoro + 0 permessi
+ * - Giorno settimana su tutte le date
+ * - Totale festività (giorni) nel riepilogo
+ * - Festività lavorata: paga 8h festività + ore lavorate
  */
 
-const LS_ENTRIES  = "ore_entries";     // STABILE
-const LS_SETTINGS = "ore_settings";    // STABILE
-const LS_UI       = "ore_ui";          // STABILE (solo preferenze UI)
+const LS_ENTRIES  = "ore_entries";
+const LS_SETTINGS = "ore_settings";
+const LS_UI       = "ore_ui";
 
 const el = (id) => document.getElementById(id);
 
 const ui = {
-  // tabs
   tabs: Array.from(document.querySelectorAll(".tab")),
-  panels: {
-    ins: el("tab-ins"),
-    set: el("tab-set"),
-    rep: el("tab-rep"),
-  },
+  panels: { ins: el("tab-ins"), set: el("tab-set"), rep: el("tab-rep") },
 
   // inserimento
   date: el("date"),
@@ -32,8 +27,8 @@ const ui = {
   note: el("note"),
   saveBtn: el("saveBtn"),
   clearBtn: el("clearBtn"),
-
   todayBtn: el("todayBtn"),
+  ordinaryBtn: el("ordinaryBtn"),
   dupYesterdayBtn: el("dupYesterdayBtn"),
   dupLastWorkBtn: el("dupLastWorkBtn"),
 
@@ -71,6 +66,10 @@ function pad(n){ return String(n).padStart(2,"0"); }
 function ymd(d){
   const dt = (d instanceof Date) ? d : new Date(d);
   return `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}`;
+}
+function parseYMD(str){
+  const [y,m,da] = str.split("-").map(Number);
+  return new Date(y, m-1, da);
 }
 function clamp(n, min, max){ return Math.min(max, Math.max(min, n)); }
 function minutesToHHMM(min){
@@ -117,6 +116,26 @@ function dateShift(yyyyMMdd, deltaDays){
   d.setDate(d.getDate() + deltaDays);
   return ymd(d);
 }
+function isWeekend(dateStr){
+  const d = parseYMD(dateStr);
+  const dow = d.getDay(); // 0 dom .. 6 sab
+  return dow === 0 || dow === 6;
+}
+function weekdayShortIT(dateStr){
+  const d = parseYMD(dateStr);
+  const dow = d.getDay();
+  const map = ["Dom","Lun","Mar","Mer","Gio","Ven","Sab"];
+  return map[dow] || "";
+}
+function daysInMonth(yyyyMM){
+  const [y, m] = yyyyMM.split("-").map(Number);
+  const last = new Date(y, m, 0).getDate();
+  const out = [];
+  for(let day=1; day<=last; day++){
+    out.push(`${y}-${pad(m)}-${pad(day)}`);
+  }
+  return out;
+}
 
 /* ---------- Storage ---------- */
 function loadJSON(key, fallback){
@@ -127,17 +146,12 @@ function loadJSON(key, fallback){
 function saveJSON(key, obj){
   localStorage.setItem(key, JSON.stringify(obj));
 }
-
 function loadSettings(){
   return loadJSON(LS_SETTINGS, { stdDayHours: 8, roundMin: 0, extraHolidays: [] });
 }
 function saveSettings(s){ saveJSON(LS_SETTINGS, s); }
-
-function loadEntries(){
-  return loadJSON(LS_ENTRIES, []);
-}
+function loadEntries(){ return loadJSON(LS_ENTRIES, []); }
 function saveEntries(arr){ saveJSON(LS_ENTRIES, arr); }
-
 function upsertEntry(entries, entry){
   const idx = entries.findIndex(e => e.date === entry.date);
   if(idx >= 0) entries[idx] = entry;
@@ -148,14 +162,10 @@ function upsertEntry(entries, entry){
 function deleteEntry(entries, dateStr){
   return entries.filter(e => e.date !== dateStr);
 }
-function monthFilter(entries, monthValue){
-  return entries.filter(e => e.date.startsWith(monthValue + "-"));
-}
 
-/* ---------- Migrazione da vecchie versioni ---------- */
+/* ---------- Migrazione ---------- */
 function tryMigrateOldKeys(){
   if(localStorage.getItem(LS_ENTRIES)) return false;
-
   const oldCandidates = ["ore_entries_v4","ore_entries_v3","ore_entries_v2","ore_entries_v1"];
   for(const k of oldCandidates){
     const raw = localStorage.getItem(k);
@@ -171,7 +181,7 @@ function tryMigrateOldKeys(){
   return false;
 }
 
-/* ---------- Festività IT ---------- */
+/* ---------- Festività IT (suggerimento data) ---------- */
 function easterSunday(year){
   const a = year % 19;
   const b = Math.floor(year / 100);
@@ -205,22 +215,43 @@ function italianHolidaysSet(year, extraHolidays){
 }
 
 /* ---------- Calcoli ---------- */
+function stdDayMin(settings){
+  return Math.round((Number(settings.stdDayHours) || 0) * 60);
+}
 function computeDailyOrdOT(workMin, settings){
-  const stdDayMin = Math.round((Number(settings.stdDayHours) || 0) * 60);
-  const ordinary = Math.min(workMin, stdDayMin);
-  const overtime = Math.max(0, workMin - stdDayMin);
+  const s = stdDayMin(settings);
+  const ordinary = Math.min(workMin, s);
+  const overtime = Math.max(0, workMin - s);
   return { ordinary, overtime };
 }
+
+/* Totali mensili:
+ * - ordinaryMin: ordinarie da ORE LAVORATE
+ * - overtimeMin: straord da ORE LAVORATE
+ * - holidayPayMin: "8 ore festività" (stdDayMin) per ogni giorno status=public_holiday
+ * - ordinaryPaidMin: ordinarie pagate = ordinaryMin + holidayPayMin
+ */
 function computeMonthlyTotals(entries, settings){
   let ordinaryMin = 0;
   let overtimeMin = 0;
   let permitMinTotal = 0;
   let vacationDays = 0;
   let sickDays = 0;
+  let holidayDays = 0;
+  let holidayPayMin = 0;
+
+  const sdm = stdDayMin(settings);
 
   for(const e of entries){
+    if(e.__empty) continue;
+
     if(e.status === "vacation") vacationDays++;
     if(e.status === "sick") sickDays++;
+
+    if(e.status === "public_holiday"){
+      holidayDays++;
+      holidayPayMin += sdm; // sempre, anche se lavorata
+    }
 
     const workMin = Number(e.workMin || 0);
     const { ordinary, overtime } = computeDailyOrdOT(workMin, settings);
@@ -229,44 +260,136 @@ function computeMonthlyTotals(entries, settings){
 
     permitMinTotal += Number(e.permitMin || 0);
   }
-  return { ordinaryMin, overtimeMin, permitMinTotal, vacationDays, sickDays };
+
+  return {
+    ordinaryMin,
+    overtimeMin,
+    permitMinTotal,
+    vacationDays,
+    sickDays,
+    holidayDays,
+    holidayPayMin,
+    ordinaryPaidMin: ordinaryMin + holidayPayMin
+  };
+}
+
+/* ---------- Report: tutti i giorni ---------- */
+function buildMonthReportRows(monthVal){
+  const dates = daysInMonth(monthVal);
+  const byDate = new Map(allEntries.map(e => [e.date, e]));
+  return dates.map(d => byDate.get(d) || ({ date: d, __empty: true }));
+}
+
+/* ---------- UI state (tabs) ---------- */
+function loadUIState(){ return loadJSON(LS_UI, { lastTab: "ins" }); }
+function saveUIState(state){ saveJSON(LS_UI, state); }
+function switchTab(tabKey){
+  ui.tabs.forEach(b => {
+    const active = b.dataset.tab === tabKey;
+    b.classList.toggle("active", active);
+    b.setAttribute("aria-selected", active ? "true" : "false");
+  });
+  Object.entries(ui.panels).forEach(([k, panel]) => panel.classList.toggle("active", k === tabKey));
+  const st = loadUIState();
+  st.lastTab = tabKey;
+  saveUIState(st);
+}
+
+/* ---------- Form helpers ---------- */
+function fillFormFromEntry(e){
+  ui.date.value = e.date;
+  ui.status.value = e.status || "normal";
+  ui.workHours.value = (e.workMin||0) ? minutesToHHMM(Number(e.workMin||0)) : "";
+  ui.permitHours.value = (e.permitMin||0) ? minutesToHHMM(Number(e.permitMin||0)) : "";
+  ui.note.value = e.note || "";
+  updateHolidaySuggestion();
+}
+function findEntryByDate(dateStr){ return allEntries.find(e => e.date === dateStr); }
+function findLastWorkEntry(beforeDateStr){
+  const sorted = [...allEntries].sort((a,b) => a.date.localeCompare(b.date));
+  for(let i = sorted.length - 1; i >= 0; i--){
+    const e = sorted[i];
+    if(e.date < beforeDateStr && Number(e.workMin || 0) > 0) return e;
+  }
+  return null;
+}
+
+/* ---------- Festività UI hint ---------- */
+let settings = loadSettings();
+let allEntries = loadEntries();
+let currentMonthRows = [];
+
+function updateExtraList(){
+  const arr = (settings.extraHolidays || []).slice().sort();
+  ui.extraList.textContent = arr.length ? `Extra: ${arr.join(", ")}` : `Nessuna festività extra.`;
+}
+function updateHolidaySuggestion(){
+  const d = ui.date.value;
+  if(!d){ ui.holidayHint.textContent = ""; return; }
+  const year = Number(d.slice(0,4));
+  const holidaySet = italianHolidaysSet(year, settings.extraHolidays);
+  const isHol = holidaySet.has(d);
+
+  if(isHol){
+    ui.holidayHint.textContent = "⚑ Questa data risulta festività (IT o extra).";
+    if(ui.status.value === "normal") ui.status.value = "public_holiday";
+  } else {
+    ui.holidayHint.textContent = "";
+  }
 }
 
 /* ---------- Render ---------- */
 function renderStats(t){
   ui.stats.innerHTML = `
-    <div class="stat"><div class="k">Ordinarie (mese)</div><div class="v">${minutesToHHMM(t.ordinaryMin)}</div></div>
+    <div class="stat"><div class="k">Ordinarie (mese)</div><div class="v">${minutesToHHMM(t.ordinaryPaidMin)}</div></div>
     <div class="stat"><div class="k">Straordinari (mese)</div><div class="v">${minutesToHHMM(t.overtimeMin)}</div></div>
     <div class="stat"><div class="k">Permessi (ore)</div><div class="v">${minutesToHHMM(t.permitMinTotal)}</div></div>
     <div class="stat"><div class="k">Ferie / Malattia (giorni)</div><div class="v">${t.vacationDays} / ${t.sickDays}</div></div>
+    <div class="stat"><div class="k">Festività (giorni)</div><div class="v">${t.holidayDays}</div></div>
   `;
 }
 
-function renderTable(entries, settings){
+function renderTable(rows){
   ui.tbody.innerHTML = "";
 
-  for(const e of entries){
+  for(const e of rows){
     const tr = document.createElement("tr");
+    const isEmpty = !!e.__empty;
+
+    const weekend = isWeekend(e.date);
+    const isHoliday = (!isEmpty && e.status === "public_holiday");
+    if(weekend || isHoliday){
+      tr.style.color = "#ff5a6a"; // tutta la riga rossa
+      tr.style.fontWeight = "800";
+    }
 
     const workMin = Number(e.workMin || 0);
     const permitMin = Number(e.permitMin || 0);
 
-    const work = workMin ? minutesToHHMM(workMin) : "—";
-    const perm = permitMin ? minutesToHHMM(permitMin) : "—";
+    const work = (!isEmpty && workMin) ? minutesToHHMM(workMin) : "—";
+    const perm = (!isEmpty && permitMin) ? minutesToHHMM(permitMin) : "—";
 
     const { ordinary, overtime } = computeDailyOrdOT(workMin, settings);
+    const ordTxt = (!isEmpty && workMin) ? minutesToHHMM(ordinary) : "—";
+    const otTxt  = (!isEmpty && workMin) ? minutesToHHMM(overtime) : "—";
+
+    const statusTxt = isEmpty ? "—" : (STATUS_LABEL[e.status] || e.status || "—");
+    const noteTxt = isEmpty ? "" : (e.note || "");
+
+    const wd = weekdayShortIT(e.date);
+    const dateLabel = `${wd} ${e.date}`;
 
     tr.innerHTML = `
-      <td>${e.date}</td>
-      <td><span class="badge">${STATUS_LABEL[e.status] || e.status}</span></td>
+      <td>${dateLabel}</td>
+      <td><span class="badge">${statusTxt}</span></td>
       <td>${work}</td>
       <td>${perm}</td>
-      <td>${workMin ? minutesToHHMM(ordinary) : "—"}</td>
-      <td>${workMin ? minutesToHHMM(overtime) : "—"}</td>
-      <td>${(e.note || "").replaceAll("<","&lt;").replaceAll(">","&gt;")}</td>
+      <td>${ordTxt}</td>
+      <td>${otTxt}</td>
+      <td>${noteTxt.replaceAll("<","&lt;").replaceAll(">","&gt;")}</td>
       <td style="text-align:right">
-        <button class="ghost" data-edit="${e.date}">Modifica</button>
-        <button class="danger" data-del="${e.date}">Elimina</button>
+        <button class="ghost" data-edit="${e.date}">${isEmpty ? "Aggiungi" : "Modifica"}</button>
+        ${isEmpty ? "" : `<button class="danger" data-del="${e.date}">Elimina</button>`}
       </td>
     `;
     ui.tbody.appendChild(tr);
@@ -275,10 +398,19 @@ function renderTable(entries, settings){
   ui.tbody.querySelectorAll("button[data-edit]").forEach(btn => {
     btn.addEventListener("click", () => {
       const d = btn.getAttribute("data-edit");
-      const e = currentMonthEntries.find(x => x.date === d);
-      if(!e) return;
+      const existing = allEntries.find(x => x.date === d);
 
-      fillFormFromEntry(e);
+      if(existing){
+        fillFormFromEntry(existing);
+      } else {
+        ui.date.value = d;
+        ui.status.value = "normal";
+        ui.workHours.value = "";
+        ui.permitHours.value = "";
+        ui.note.value = "";
+        updateHolidaySuggestion();
+      }
+
       switchTab("ins");
       window.scrollTo({top:0, behavior:"smooth"});
     });
@@ -308,18 +440,20 @@ function downloadText(filename, text, mime="application/json"){
   URL.revokeObjectURL(url);
 }
 
-function exportCSV(monthEntries, settings){
+function exportCSV(monthRows){
   const monthVal = ui.month.value || defaultMonthValue();
-  const totals = computeMonthlyTotals(monthEntries, settings);
+  const real = monthRows.filter(e => !e.__empty);
+  const totals = computeMonthlyTotals(monthRows, settings);
 
-  const header = ["month","date","status","work_hhmm","permit_hhmm","ordinary_hhmm","overtime_hhmm","note"];
-  const rows = monthEntries.map(e => {
+  const header = ["month","date","weekday","status","work_hhmm","permit_hhmm","ordinary_hhmm","overtime_hhmm","note"];
+  const rows = real.map(e => {
     const workMin = Number(e.workMin || 0);
     const permitMin = Number(e.permitMin || 0);
     const { ordinary, overtime } = computeDailyOrdOT(workMin, settings);
     return [
       monthVal,
       e.date,
+      weekdayShortIT(e.date),
       e.status,
       workMin ? minutesToHHMM(workMin) : "",
       permitMin ? minutesToHHMM(permitMin) : "",
@@ -330,12 +464,13 @@ function exportCSV(monthEntries, settings){
   });
 
   const summary = [
-    ["", "TOTALI MESE", "", "", "", "", "", ""],
-    ["", "Ordinarie", "", "", minutesToHHMM(totals.ordinaryMin), "", "", ""],
-    ["", "Straordinari", "", "", minutesToHHMM(totals.overtimeMin), "", "", ""],
-    ["", "Permessi (ore)", "", minutesToHHMM(totals.permitMinTotal), "", "", "", ""],
-    ["", "Ferie (giorni)", totals.vacationDays, "", "", "", "", "", ""],
-    ["", "Malattia (giorni)", totals.sickDays, "", "", "", "", "", ""],
+    ["", "TOTALI MESE", "", "", "", "", "", "", ""],
+    ["", "Ordinarie (incl. festività)", "", "", minutesToHHMM(totals.ordinaryPaidMin), "", "", "", ""],
+    ["", "Straordinari", "", "", minutesToHHMM(totals.overtimeMin), "", "", "", ""],
+    ["", "Permessi (ore)", "", "", minutesToHHMM(totals.permitMinTotal), "", "", "", ""],
+    ["", "Ferie (giorni)", "", "", totals.vacationDays, "", "", "", ""],
+    ["", "Malattia (giorni)", "", "", totals.sickDays, "", "", "", ""],
+    ["", "Festività (giorni)", "", "", totals.holidayDays, "", "", "", ""],
   ];
 
   const csv = [header, ...rows, ...summary]
@@ -345,23 +480,37 @@ function exportCSV(monthEntries, settings){
   downloadText(`registro-ore_${monthVal}.csv`, csv, "text/csv;charset=utf-8");
 }
 
-function exportPDF(monthEntries, settings){
+/* PDF: riga rossa completa per weekend o festività + separatore Perm/Note + weekday */
+function exportPDF(monthRows){
   const monthVal = ui.month.value || defaultMonthValue();
-  const totals = computeMonthlyTotals(monthEntries, settings);
+  const totals = computeMonthlyTotals(monthRows, settings);
 
-  const rowsHtml = monthEntries.map(e => {
+  const rowsHtml = monthRows.map(e => {
+    const isEmpty = !!e.__empty;
+    const weekend = isWeekend(e.date);
+    const isHoliday = (!isEmpty && e.status === "public_holiday");
+    const redRow = (weekend || isHoliday);
+
     const workMin = Number(e.workMin || 0);
     const permitMin = Number(e.permitMin || 0);
-    const work = workMin ? minutesToHHMM(workMin) : "";
-    const perm = permitMin ? minutesToHHMM(permitMin) : "";
-    const status = STATUS_LABEL[e.status] || e.status;
-    const note = (e.note || "").replaceAll("<","&lt;").replaceAll(">","&gt;");
+    const { ordinary, overtime } = computeDailyOrdOT(workMin, settings);
+
+    const ord = (!isEmpty && workMin) ? minutesToHHMM(ordinary) : "";
+    const ot  = (!isEmpty && workMin) ? minutesToHHMM(overtime) : "";
+    const perm = (!isEmpty && permitMin) ? minutesToHHMM(permitMin) : "";
+    const status = isEmpty ? "" : (STATUS_LABEL[e.status] || e.status || "");
+    const note = isEmpty ? "" : (e.note || "").replaceAll("<","&lt;").replaceAll(">","&gt;");
+
+    const dayNum = e.date.slice(8,10);
+    const wd = weekdayShortIT(e.date);
+
     return `
-      <tr>
-        <td>${e.date.slice(8,10)}</td>
-        <td>${status}</td>
-        <td class="r">${work}</td>
-        <td class="r">${perm}</td>
+      <tr class="${redRow ? "redrow" : ""}">
+        <td class="day">${wd} ${dayNum}</td>
+        <td class="status">${status}</td>
+        <td class="r ord">${ord}</td>
+        <td class="r ot">${ot}</td>
+        <td class="r perm sep">${perm}</td>
         <td class="note">${note}</td>
       </tr>
     `;
@@ -375,21 +524,34 @@ function exportPDF(monthEntries, settings){
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Report Ore ${monthVal}</title>
 <style>
-  @page { size: A4; margin: 8mm; }
+  @page { size: A4; margin: 7mm; }
   body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#111;margin:0}
-  .wrap{padding:8mm}
-  h1{margin:0 0 4px;font-size:16px}
-  .meta{display:flex;gap:10px;flex-wrap:wrap;align-items:baseline;margin-bottom:8px}
-  .meta .muted{color:#555;font-size:11px}
-  .totals{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin:6px 0 10px}
+  .wrap{padding:7mm}
+  h1{margin:0 0 4px;font-size:15px}
+  .meta{display:flex;gap:10px;flex-wrap:wrap;align-items:baseline;margin-bottom:6px}
+  .meta .muted{color:#555;font-size:10.5px}
+
+  .totals{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin:6px 0 8px}
   .box{border:1px solid #ddd;border-radius:8px;padding:6px}
   .k{color:#555;font-size:10px}
-  .v{font-size:13px;font-weight:800;margin-top:2px}
+  .v{font-size:12.5px;font-weight:800;margin-top:2px}
+
   table{width:100%;border-collapse:collapse;font-size:10px;table-layout:fixed}
-  th,td{border-bottom:1px solid #e8e8e8;padding:4px 5px;vertical-align:top}
+  th,td{border-bottom:1px solid #e8e8e8;padding:3px 5px;vertical-align:top}
   th{background:#f6f6f6;text-align:left}
   .r{text-align:right}
-  .note{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  th.day, td.day{width:9%}
+  th.status, td.status{width:16%}
+  th.ord, td.ord{width:11%}
+  th.ot, td.ot{width:11%}
+  th.perm, td.perm{width:10%}
+  th.sep, td.sep{border-right:1px solid #d7d7d7;}
+
+  td.note{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  /* tutta la riga rossa */
+  tr.redrow td{color:#c40000;font-weight:800;}
 </style>
 </head>
 <body>
@@ -400,32 +562,32 @@ function exportPDF(monthEntries, settings){
     </div>
 
     <div class="totals">
-      <div class="box"><div class="k">Ordinarie</div><div class="v">${minutesToHHMM(totals.ordinaryMin)}</div></div>
+      <div class="box"><div class="k">Ordinarie</div><div class="v">${minutesToHHMM(totals.ordinaryPaidMin)}</div></div>
       <div class="box"><div class="k">Straordinari</div><div class="v">${minutesToHHMM(totals.overtimeMin)}</div></div>
       <div class="box"><div class="k">Permessi</div><div class="v">${minutesToHHMM(totals.permitMinTotal)}</div></div>
       <div class="box"><div class="k">Ferie (gg)</div><div class="v">${totals.vacationDays}</div></div>
       <div class="box"><div class="k">Malattia (gg)</div><div class="v">${totals.sickDays}</div></div>
+      <div class="box"><div class="k">Festività (gg)</div><div class="v">${totals.holidayDays}</div></div>
     </div>
 
     <table>
       <thead>
         <tr>
-          <th style="width:7%">G</th>
-          <th style="width:18%">Stato</th>
-          <th class="r" style="width:12%">Lavoro</th>
-          <th class="r" style="width:12%">Permesso</th>
-          <th>Nota</th>
+          <th class="day">G</th>
+          <th class="status">Stato</th>
+          <th class="r ord">Ord.</th>
+          <th class="r ot">Straord.</th>
+          <th class="r perm sep">Perm.</th>
+          <th>Note</th>
         </tr>
       </thead>
       <tbody>
-        ${rowsHtml || `<tr><td colspan="5">Nessun dato per questo mese.</td></tr>`}
+        ${rowsHtml}
       </tbody>
     </table>
   </div>
 
-  <script>
-    window.onload = () => setTimeout(() => window.print(), 250);
-  </script>
+  <script>window.onload = () => setTimeout(() => window.print(), 250);</script>
 </body>
 </html>`;
 
@@ -478,75 +640,7 @@ function restoreFromObject(obj){
   alert(`Ripristino completato: ${allEntries.length} giorni importati.`);
 }
 
-/* ---------- Festività UI ---------- */
-function updateExtraList(){
-  const arr = (settings.extraHolidays || []).slice().sort();
-  ui.extraList.textContent = arr.length ? `Extra: ${arr.join(", ")}` : `Nessuna festività extra.`;
-}
-function updateHolidaySuggestion(){
-  const d = ui.date.value;
-  if(!d){ ui.holidayHint.textContent = ""; return; }
-  const year = Number(d.slice(0,4));
-  const holidaySet = italianHolidaysSet(year, settings.extraHolidays);
-  const isHoliday = holidaySet.has(d);
-
-  if(isHoliday){
-    ui.holidayHint.textContent = "⚑ Questa data risulta festività (IT o extra).";
-    if(ui.status.value === "normal") ui.status.value = "public_holiday";
-  } else {
-    ui.holidayHint.textContent = "";
-  }
-}
-
-/* ---------- Tabs + UI state ---------- */
-function loadUIState(){
-  return loadJSON(LS_UI, { lastTab: "ins" });
-}
-function saveUIState(state){
-  saveJSON(LS_UI, state);
-}
-function switchTab(tabKey){
-  ui.tabs.forEach(b => {
-    const active = b.dataset.tab === tabKey;
-    b.classList.toggle("active", active);
-    b.setAttribute("aria-selected", active ? "true" : "false");
-  });
-  Object.entries(ui.panels).forEach(([k, panel]) => {
-    panel.classList.toggle("active", k === tabKey);
-  });
-  const st = loadUIState();
-  st.lastTab = tabKey;
-  saveUIState(st);
-}
-
-function fillFormFromEntry(e){
-  ui.date.value = e.date;
-  ui.status.value = e.status || "normal";
-  ui.workHours.value = (e.workMin||0) ? minutesToHHMM(Number(e.workMin||0)) : "";
-  ui.permitHours.value = (e.permitMin||0) ? minutesToHHMM(Number(e.permitMin||0)) : "";
-  ui.note.value = e.note || "";
-  updateHolidaySuggestion();
-}
-
-function findEntryByDate(dateStr){
-  return allEntries.find(e => e.date === dateStr);
-}
-function findLastWorkEntry(beforeDateStr){
-  const sorted = [...allEntries].sort((a,b) => a.date.localeCompare(b.date));
-  for(let i = sorted.length - 1; i >= 0; i--){
-    const e = sorted[i];
-    if(e.date < beforeDateStr && Number(e.workMin || 0) > 0){
-      return e;
-    }
-  }
-  return null;
-}
-
-/* ---------- App state ---------- */
-let settings = loadSettings();
-let allEntries = loadEntries();
-let currentMonthEntries = [];
-
+/* ---------- Refresh ---------- */
 function refresh(){
   ui.stdDayHours.value = settings.stdDayHours;
   ui.roundMin.value = settings.roundMin;
@@ -555,16 +649,19 @@ function refresh(){
   const monthVal = ui.month.value || defaultMonthValue();
   ui.month.value = monthVal;
 
-  currentMonthEntries = monthFilter(allEntries, monthVal);
+  currentMonthRows = buildMonthReportRows(monthVal);
 
-  const totals = computeMonthlyTotals(currentMonthEntries, settings);
+  const totals = computeMonthlyTotals(currentMonthRows, settings);
   renderStats(totals);
-  renderTable(currentMonthEntries, settings);
+  renderTable(currentMonthRows);
 }
 
-/* ---------- Events ---------- */
+/* ---------- Eventi ---------- */
 // Tabs
 ui.tabs.forEach(btn => btn.addEventListener("click", () => switchTab(btn.dataset.tab)));
+
+// Date change
+ui.date.addEventListener("change", updateHolidaySuggestion);
 
 // Oggi
 ui.todayBtn.addEventListener("click", () => {
@@ -574,15 +671,21 @@ ui.todayBtn.addEventListener("click", () => {
   switchTab("ins");
 });
 
+// Ordinario (8h + normale)
+ui.ordinaryBtn.addEventListener("click", () => {
+  ui.status.value = "normal";
+  ui.workHours.value = "8:00";
+  ui.permitHours.value = "0:00";
+  // nota non la tocco
+  updateHolidaySuggestion();
+});
+
 // Duplica ieri
 ui.dupYesterdayBtn.addEventListener("click", () => {
   const targetDate = ui.date.value || ymd(new Date());
   const y = dateShift(targetDate, -1);
   const src = findEntryByDate(y);
-  if(!src){
-    alert(`Nessun dato trovato per ieri (${y}).`);
-    return;
-  }
+  if(!src){ alert(`Nessun dato trovato per ieri (${y}).`); return; }
   if(!confirm(`Copiare i dati da ${y} alla data selezionata (${targetDate})?`)) return;
 
   ui.status.value = src.status || "normal";
@@ -596,10 +699,7 @@ ui.dupYesterdayBtn.addEventListener("click", () => {
 ui.dupLastWorkBtn.addEventListener("click", () => {
   const targetDate = ui.date.value || ymd(new Date());
   const src = findLastWorkEntry(targetDate);
-  if(!src){
-    alert("Nessun giorno lavorato precedente trovato (con ore lavoro > 0).");
-    return;
-  }
+  if(!src){ alert("Nessun giorno lavorato precedente trovato (con ore lavoro > 0)."); return; }
   if(!confirm(`Copiare i dati dall’ultimo giorno lavorato (${src.date}) alla data selezionata (${targetDate})?`)) return;
 
   ui.status.value = src.status || "normal";
@@ -607,6 +707,13 @@ ui.dupLastWorkBtn.addEventListener("click", () => {
   ui.permitHours.value = (src.permitMin||0) ? minutesToHHMM(Number(src.permitMin||0)) : "";
   ui.note.value = src.note || "";
   updateHolidaySuggestion();
+});
+
+// Pulisci
+ui.clearBtn.addEventListener("click", () => {
+  ui.workHours.value = "";
+  ui.permitHours.value = "";
+  ui.note.value = "";
 });
 
 // Salva
@@ -625,7 +732,8 @@ ui.saveBtn.addEventListener("click", () => {
   let permitMin = clamp(roundMinutes(permitParsed, settings.roundMin), 0, 24*60);
   const status = ui.status.value;
 
-  if(status !== "normal" && (workMin > 0 || permitMin > 0)){
+  // Permetti ore su Festività (public_holiday). Per ferie/malattia chiedo se azzerare.
+  if(status !== "normal" && status !== "public_holiday" && (workMin > 0 || permitMin > 0)){
     const ok = confirm("Stato non ‘Normale’. Vuoi azzerare automaticamente lavoro e permesso?");
     if(ok){ workMin = 0; permitMin = 0; }
   }
@@ -634,6 +742,7 @@ ui.saveBtn.addEventListener("click", () => {
   allEntries = upsertEntry(allEntries, entry);
   saveEntries(allEntries);
 
+  // pulizia rapida (resto su stessa data)
   ui.workHours.value = "";
   ui.permitHours.value = "";
   ui.note.value = "";
@@ -641,14 +750,6 @@ ui.saveBtn.addEventListener("click", () => {
   refresh();
   updateHolidaySuggestion();
 });
-
-ui.clearBtn.addEventListener("click", () => {
-  ui.workHours.value = "";
-  ui.permitHours.value = "";
-  ui.note.value = "";
-});
-
-ui.date.addEventListener("change", updateHolidaySuggestion);
 
 // Settings
 ui.stdDayHours.addEventListener("change", () => {
@@ -677,7 +778,7 @@ ui.resetSettingsBtn.addEventListener("click", () => {
   refresh();
 });
 
-// Month report
+// Month nav
 ui.month.addEventListener("change", refresh);
 ui.prevMonthBtn.addEventListener("click", () => {
   ui.month.value = monthShift(ui.month.value || defaultMonthValue(), -1);
@@ -688,8 +789,9 @@ ui.nextMonthBtn.addEventListener("click", () => {
   refresh();
 });
 
-ui.exportCsvBtn.addEventListener("click", () => exportCSV(currentMonthEntries, settings));
-ui.exportPdfBtn.addEventListener("click", () => exportPDF(currentMonthEntries, settings));
+// Export
+ui.exportCsvBtn.addEventListener("click", () => exportCSV(currentMonthRows));
+ui.exportPdfBtn.addEventListener("click", () => exportPDF(currentMonthRows));
 
 // Backup/Restore/Wipe
 ui.backupBtn.addEventListener("click", backupNow);
